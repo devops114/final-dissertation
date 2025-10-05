@@ -1,0 +1,324 @@
+
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'E-commerce Dissertation - Complete CI/CD Pipeline with Monitoring'
+
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 Key Pair for SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+  GitHubRepo:
+    Description: GitHub repository name (e.g., your-username/your-repo)
+    Type: String
+    Default: your-username/ecommerce-dissertation
+
+  GitHubBranch:
+    Description: GitHub branch to deploy
+    Type: String
+    Default: main
+
+Resources:
+  # === SECURITY GROUPS ===
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP, HTTPS, and SSH access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+
+  # === IAM ROLES ===
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  # === S3 BUCKET FOR ARTIFACTS ===
+  ArtifactStoreBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ecommerce-artifacts-${AWS::AccountId}-${AWS::Region}
+      VersioningConfiguration:
+        Status: Enabled
+
+  # === CODEBUILD PROJECT ===
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ecommerce-build
+      Description: Build and test e-commerce application
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 18
+              commands:
+                - echo "Installing dependencies..."
+                - cd backend && npm install
+                - cd ../frontend && npm install
+            pre_build:
+              commands:
+                - echo "Running tests..."
+                - cd backend && npm test
+                - cd ../frontend && CI=true npm test -- --coverage --watchAll=false
+            build:
+              commands:
+                - echo "Building application..."
+                - cd frontend && npm run build
+                - echo "Build completed on `date`"
+            post_build:
+              commands:
+                - echo "Creating deployment package..."
+                - mkdir -p deployment
+                - cp -r backend/* deployment/
+                - cp -r frontend/build deployment/frontend-build
+                - cp scripts/deploy.sh deployment/
+                - chmod +x deployment/deploy.sh
+          artifacts:
+            files:
+              - '**/*'
+            base-directory: deployment
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        EnvironmentVariables:
+          - Name: NODE_ENV
+            Value: production
+
+  # === EC2 INSTANCE ===
+  EcommerceInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-0aa7d40eeae50c9a9  # Amazon Linux 2023
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref WebSecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+        - Key: Name
+          Value: ecommerce-dissertation
+        - Key: Project
+          Value: dissertation
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          # Update system
+          dnf update -y
+          
+          # Install dependencies
+          dnf install -y nodejs npm nginx postgresql
+          
+          # Install PM2 for process management
+          npm install -g pm2
+          
+          # Create application directories
+          mkdir -p /home/ec2-user/backend
+          mkdir -p /var/www/frontend
+          mkdir -p /var/log/ecommerce
+          
+          # Set proper permissions
+          chown -R ec2-user:ec2-user /home/ec2-user/backend
+          chown -R nginx:nginx /var/www/frontend
+          chmod -R 755 /var/www/frontend
+          
+          # Configure nginx
+          cat > /etc/nginx/conf.d/ecommerce.conf << 'NGINX_CONFIG'
+          server {
+              listen 80;
+              server_name _;
+              root /var/www/frontend;
+              index index.html index.htm;
+              
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+              
+              location /api {
+                  proxy_pass http://localhost:5000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+          NGINX_CONFIG
+          
+          # Remove default nginx config
+          rm -f /etc/nginx/conf.d/default.conf
+          
+          # Test nginx configuration
+          nginx -t
+          
+          # Enable and start nginx
+          systemctl enable nginx
+          systemctl start nginx
+          
+          echo "EC2 instance setup complete - ready for deployment"
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  # === CLOUDWATCH ALARMS ===
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alarm if CPU utilization is high
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref NotificationTopic
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref EcommerceInstance
+
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: EcommerceAlerts
+
+  # === CODEPIPELINE ===
+  CICDPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: ecommerce-dissertation-pipeline
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactStoreBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Select [0, !Split ['/', !Ref GitHubRepo]]
+                Repo: !Select [1, !Split ['/', !Ref GitHubRepo]]
+                Branch: !Ref GitHubBranch
+                OAuthToken: '{{resolve:secretsmanager:github-token}}'
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref BuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref CodeDeployApplication
+                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+Outputs:
+  WebsiteURL:
+    Description: Application URL
+    Value: !Sub 'http://${EcommerceInstance.PublicDnsName}'
+  PipelineURL:
+    Description: CodePipeline Console URL
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${CICDPipeline}/view'
+  CloudWatchDashboard:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=Ecommerce-Dashboard'
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref EcommerceInstance

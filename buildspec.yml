@@ -1,0 +1,34 @@
+
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Installing dependencies..."
+      - cd backend && npm install
+      - cd ../frontend && npm install
+
+  pre_build:
+    commands:
+      - echo "Running tests..."
+      - cd backend && npm test
+      - cd ../frontend && CI=true npm test -- --coverage --watchAll=false
+
+  build:
+    commands:
+      - echo "Building application..."
+      - cd frontend && npm run build
+      - echo "Deploying infrastructure..."
+      - aws cloudformation deploy --template-file infrastructure/aws/cloudformation.yml --stack-name ecommerce-dissertation --parameter-overrides KeyName=$KEY_NAME --capabilities CAPABILITY_NAMED_IAM
+
+  post_build:
+    commands:
+      - echo "Build completed on `date`"
+      - echo "Application deployed successfully"
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: frontend/build
