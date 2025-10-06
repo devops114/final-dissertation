@@ -30,6 +30,7 @@ phases:
       - cp -r backend deployment/
       - cp -r frontend/build deployment/frontend-build
       - cp scripts/deploy.sh deployment/
+      - cp appspec.yml deployment/  # ← Add this line
       - echo "Deployment package ready"
 
 artifacts:
