@@ -97,45 +97,14 @@ Resources:
 
   # === CODEBUILD PROJECT ===
   BuildProject:
-  Type: AWS::CodeBuild::Project
-  Properties:
-    Name: ecommerce-build
-    Description: Build and test e-commerce application
-    ServiceRole: !GetAtt CodeBuildRole.Arn
-    Source:
-      Type: CODEPIPELINE
-      BuildSpec: buildspec.yml  # ← Just reference the file in your repo
-    Artifacts:
-      Type: CODEPIPELINE
-    Environment:
-      Type: LINUX_CONTAINER
-      ComputeType: BUILD_GENERAL1_MEDIUM
-      Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
-      EnvironmentVariables:
-        - Name: NODE_ENV
-          Value: production
-            pre_build:
-              commands:
-                - echo "Running tests..."
-                - cd backend && npm test
-                - cd ../frontend && CI=true npm test -- --coverage --watchAll=false
-            build:
-              commands:
-                - echo "Building application..."
-                - cd frontend && npm run build
-                - echo "Build completed on `date`"
-            post_build:
-              commands:
-                - echo "Creating deployment package..."
-                - mkdir -p deployment
-                - cp -r backend/* deployment/
-                - cp -r frontend/build deployment/frontend-build
-                - cp scripts/deploy.sh deployment/
-                - chmod +x deployment/deploy.sh
-          artifacts:
-            files:
-              - '**/*'
-            base-directory: deployment
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ecommerce-build
+      Description: Build and test e-commerce application
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
       Artifacts:
         Type: CODEPIPELINE
       Environment:
@@ -151,7 +120,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.micro
-      ImageId: ami-0aa7d40eeae50c9a9  # Amazon Linux 2023
+      ImageId: ami-0aa7d40eeae50c9a9
       KeyName: !Ref KeyName
       SecurityGroups:
         - !Ref WebSecurityGroup
@@ -164,37 +133,23 @@ Resources:
       UserData:
         Fn::Base64: |
           #!/bin/bash
-          # Update system
           dnf update -y
-          
-          # Install dependencies
           dnf install -y nodejs npm nginx
-          
-          # Install PM2 for process management
           npm install -g pm2
-          
-          # Create application directories
           mkdir -p /home/ec2-user/backend
           mkdir -p /var/www/frontend
-          mkdir -p /var/log/ecommerce
-          
-          # Set proper permissions
           chown -R ec2-user:ec2-user /home/ec2-user/backend
           chown -R nginx:nginx /var/www/frontend
           chmod -R 755 /var/www/frontend
-          
-          # Configure nginx
           cat > /etc/nginx/conf.d/ecommerce.conf << 'NGINX_CONFIG'
           server {
               listen 80;
               server_name _;
               root /var/www/frontend;
               index index.html index.htm;
-              
               location / {
                   try_files $uri $uri/ /index.html;
               }
-              
               location /api {
                   proxy_pass http://localhost:5000;
                   proxy_http_version 1.1;
@@ -208,18 +163,11 @@ Resources:
               }
           }
           NGINX_CONFIG
-          
-          # Remove default nginx config
           rm -f /etc/nginx/conf.d/default.conf
-          
-          # Test nginx configuration
           nginx -t
-          
-          # Enable and start nginx
           systemctl enable nginx
           systemctl start nginx
-          
-          echo "EC2 instance setup complete - ready for deployment"
+          echo "EC2 instance setup complete"
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -276,7 +224,6 @@ Resources:
               OutputArtifacts:
                 - Name: SourceOutput
               RunOrder: 1
-
         - Name: Build
           Actions:
             - Name: Build
@@ -292,7 +239,6 @@ Resources:
               OutputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
-
         - Name: Deploy
           Actions:
             - Name: Deploy
@@ -316,9 +262,6 @@ Outputs:
   PipelineURL:
     Description: CodePipeline Console URL
     Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${CICDPipeline}/view'
-  CloudWatchDashboard:
-    Description: CloudWatch Dashboard URL
-    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=Ecommerce-Dashboard'
   InstanceId:
     Description: EC2 Instance ID
     Value: !Ref EcommerceInstance
