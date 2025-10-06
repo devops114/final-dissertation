@@ -1,4 +1,6 @@
+
 version: 0.2
+
 phases:
   install:
     commands:
@@ -7,19 +9,23 @@ phases:
       - ls -la
       - echo "Node.js: $(node --version)"
       - echo "npm: $(npm --version)"
+
   build:
     commands:
       - echo "Checking project structure..."
       - find . -type d -name "frontend" -o -name "backend" | head -10
       - echo "Attempting frontend build..."
-      - cd frontend && npm install --verbose || echo "Frontend install failed"
+      - cd frontend
+      - npm install --verbose || echo "Frontend install failed"
       - npm run build || echo "Frontend build failed"
       - cd ..
       - echo "Creating deployment package..."
       - mkdir -p deployment
       - cp -r backend deployment/ 2>/dev/null || echo "Backend copy failed - creating placeholder"
       - cp -r frontend/build deployment/frontend-build 2>/dev/null || echo "Frontend build copy failed"
+
 artifacts:
   files:
     - '**/*'
   base-directory: deployment
+
