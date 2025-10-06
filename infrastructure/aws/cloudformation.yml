@@ -1,12 +1,11 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'E-commerce Dissertation - Complete CI/CD Pipeline with Monitoring'
+Description: 'E-commerce Dissertation CI/CD Pipeline - Final'
 
 Parameters:
   KeyName:
-    Description: Name of an existing EC2 Key Pair for SSH access
+    Description: Name of an existing EC2 Key Pair
     Type: AWS::EC2::KeyPair::KeyName
-    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
 
   GitHubRepo:
     Description: GitHub repository name
@@ -19,39 +18,31 @@ Parameters:
     Default: main
 
   GitHubToken:
-    Description: GitHub OAuth token for CodePipeline
+    Description: GitHub OAuth token
     Type: String
     NoEcho: true
 
 Resources:
-  # === SECURITY GROUPS ===
+  # Security Group
   WebSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enable HTTP, HTTPS, and SSH access
+      GroupDescription: Enable HTTP and SSH
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 3000
-          ToPort: 3000
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 5000
           ToPort: 5000
           CidrIp: 0.0.0.0/0
 
-  # === IAM ROLES ===
+  # IAM Roles
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -75,18 +66,8 @@ Resources:
             Principal:
               Service: codepipeline.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CodePipelinePermissions
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:*
-                  - codebuild:*
-                  - codedeploy:*
-                  - iam:PassRole
-                Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
 
   EC2InstanceRole:
     Type: AWS::IAM::Role
@@ -100,21 +81,154 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-      Policies:
-        - PolicyName: CodeDeployPermissions
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:Get*
-                  - s3:List*
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - codedeploy:*
-                Resource: "*"
+
+  # S3 Bucket
+  ArtifactStoreBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ecommerce-artifacts-final-${AWS::AccountId}-${AWS::Region}
+      VersioningConfiguration:
+        Status: Enabled
+
+  # CodeBuild
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ecommerce-build-final
+      Description: Build and test e-commerce application - Final
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        EnvironmentVariables:
+          - Name: NODE_ENV
+            Value: production
+
+  # CodeDeploy
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: ecommerce-app-final
+      ComputePlatform: Server
+
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: ecommerce-dg-final
+      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      Ec2TagFilters:
+        - Key: Name
+          Value: ecommerce-dissertation-final
+          Type: KEY_AND_VALUE
+
+  # EC2 Instance
+  EcommerceInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-0fe630eb857a6ec83
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+        - Key: Name
+          Value: ecommerce-dissertation-final
+        - Key: Project
+          Value: dissertation-final
+        - Key: Environment
+          Value: production
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          echo "=== Starting EC2 instance setup ==="
+          
+          # Update system
+          dnf update -y
+          
+          # Install dependencies
+          dnf install -y nodejs npm nginx ruby wget
+          
+          # Install CodeDeploy agent
+          cd /home/ec2-user
+          echo "Installing CodeDeploy agent..."
+          wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install
+          chmod +x ./install
+          sudo ./install auto
+          
+          # Create application directories
+          mkdir -p /home/ec2-user/backend
+          mkdir -p /var/www/frontend
+          mkdir -p /var/log/ecommerce
+          
+          # Set proper permissions
+          chown -R ec2-user:ec2-user /home/ec2-user/backend
+          chown -R nginx:nginx /var/www/frontend
+          chmod -R 755 /var/www/frontend
+          
+          # Configure nginx
+          cat > /etc/nginx/conf.d/ecommerce.conf << 'NGINX_CONFIG'
+          server {
+              listen 80;
+              server_name _;
+              root /var/www/frontend;
+              index index.html index.htm;
+              
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+              
+              location /api {
+                  proxy_pass http://localhost:5000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_cache_bypass $http_upgrade;
+              }
+              
+              # Health check endpoint for nginx
+              location /health {
+                  access_log off;
+                  return 200 "healthy\n";
+                  add_header Content-Type text/plain;
+              }
+          }
+          NGINX_CONFIG
+          
+          # Remove default nginx config
+          rm -f /etc/nginx/conf.d/default.conf
+          
+          # Test nginx configuration
+          nginx -t
+          
+          # Enable and start nginx
+          systemctl enable nginx
+          systemctl start nginx
+          
+          # Ensure CodeDeploy agent is running
+          systemctl enable codedeploy-agent
+          systemctl start codedeploy-agent
+          
+          echo "=== EC2 instance setup complete - ready for deployment ==="
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
 
   CodeDeployRole:
     Type: AWS::IAM::Role
@@ -129,91 +243,11 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
 
-  # === S3 BUCKET FOR ARTIFACTS ===
-  ArtifactStoreBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub ecommerce-artifacts-${AWS::AccountId}-${AWS::Region}
-      VersioningConfiguration:
-        Status: Enabled
-
-  # === CODEBUILD PROJECT ===
-  BuildProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Name: !Sub ecommerce-build-${AWS::StackName}
-      Description: Build and test e-commerce application
-      ServiceRole: !GetAtt CodeBuildRole.Arn
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: buildspec.yml
-      Artifacts:
-        Type: CODEPIPELINE
-      Environment:
-        Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
-
-  # === CODE DEPLOY ===
-  CodeDeployApplication:
-    Type: AWS::CodeDeploy::Application
-    Properties:
-      ApplicationName: !Sub ecommerce-app-${AWS::StackName}
-      ComputePlatform: Server
-
-  CodeDeployDeploymentGroup:
-    Type: AWS::CodeDeploy::DeploymentGroup
-    Properties:
-      ApplicationName: !Ref CodeDeployApplication
-      DeploymentGroupName: !Sub ecommerce-dg-${AWS::StackName}
-      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
-      DeploymentConfigName: CodeDeployDefault.OneAtATime
-      Ec2TagFilters:
-        - Key: Name
-          Value: !Sub ecommerce-dissertation-${AWS::StackName}
-          Type: KEY_AND_VALUE
-
-  # === EC2 INSTANCE ===
-  EcommerceInstance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t3.micro
-      ImageId: ami-0fe630eb857a6ec83  # Amazon Linux 2023 in us-east-1
-      KeyName: !Ref KeyName
-      SecurityGroupIds:
-        - !Ref WebSecurityGroup
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      Tags:
-        - Key: Name
-          Value: !Sub ecommerce-dissertation-${AWS::StackName}
-        - Key: Project
-          Value: dissertation
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -e
-          dnf update -y
-          dnf install -y nodejs npm nginx ruby wget
-          npm install -g pm2
-          cd /home/ec2-user
-          wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install
-          chmod +x ./install
-          ./install auto
-          mkdir -p /home/ec2-user/backend /var/www/frontend
-          systemctl enable codedeploy-agent
-          systemctl start codedeploy-agent
-
-  EC2InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles:
-        - !Ref EC2InstanceRole
-
-  # === CODEPIPELINE ===
+  # CodePipeline
   CICDPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: !Sub ecommerce-pipeline-${AWS::StackName}
+      Name: ecommerce-pipeline-final
       RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
@@ -228,9 +262,9 @@ Resources:
                 Version: 1
                 Provider: GitHub
               Configuration:
-                Owner: !Select [0, !Split ['/', !Ref GitHubRepo]]
-                Repo: !Select [1, !Split ['/', !Ref GitHubRepo]]
-                Branch: !Ref GitHubBranch
+                Owner: devops114
+                Repo: final-dissertation
+                Branch: main
                 OAuthToken: !Ref GitHubToken
               OutputArtifacts:
                 - Name: SourceOutput
@@ -270,5 +304,17 @@ Outputs:
     Description: Application URL
     Value: !Sub 'http://${EcommerceInstance.PublicDnsName}'
   PipelineURL:
-    Description: CodePipeline Console URL
+    Description: Pipeline Console URL
     Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${CICDPipeline}/view'
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref EcommerceInstance
+  S3Bucket:
+    Description: S3 Bucket for Artifacts
+    Value: !Ref ArtifactStoreBucket
+  CodeDeployApp:
+    Description: CodeDeploy Application Name
+    Value: !Ref CodeDeployApplication
+  CodeDeployGroup:
+    Description: CodeDeploy Deployment Group
+    Value: !Ref CodeDeployDeploymentGroup
