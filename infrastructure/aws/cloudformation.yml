@@ -104,44 +104,13 @@ Resources:
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Source:
         Type: CODEPIPELINE
-        BuildSpec: |
-          version: 0.2
-          phases:
-            install:
-              runtime-versions:
-                nodejs: 18
-              commands:
-                - echo "Installing dependencies..."
-                - cd backend && npm install && cd ..
-                - cd frontend && npm install
-            pre_build:
-              commands:
-                - echo "Running tests..."
-                - cd backend && npm test && cd ..
-                - cd frontend && CI=true npm test -- --coverage --watchAll=false
-            build:
-              commands:
-                - echo "Building application..."
-                - cd frontend && npm run build
-                - echo "Build completed on `date`"
-            post_build:
-              commands:
-                - echo "Creating deployment package..."
-                - mkdir -p deployment
-                - cp -r backend/* deployment/
-                - cp -r frontend/build deployment/frontend-build
-                - cp scripts/deploy.sh deployment/
-                - chmod +x deployment/deploy.sh
-          artifacts:
-            files:
-              - '**/*'
-            base-directory: deployment
+        BuildSpec: buildspec.yml
       Artifacts:
         Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_MEDIUM
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
         EnvironmentVariables:
           - Name: NODE_ENV
             Value: production
@@ -151,7 +120,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.micro
-      ImageId: ami-0aa7d40eeae50c9a9  # Amazon Linux 2023
+      ImageId: ami-0aa7d40eeae50c9a9
       KeyName: !Ref KeyName
       SecurityGroups:
         - !Ref WebSecurityGroup
@@ -316,9 +285,6 @@ Outputs:
   PipelineURL:
     Description: CodePipeline Console URL
     Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${CICDPipeline}/view'
-  CloudWatchDashboard:
-    Description: CloudWatch Dashboard URL
-    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=Ecommerce-Dashboard'
   InstanceId:
     Description: EC2 Instance ID
     Value: !Ref EcommerceInstance

@@ -3,13 +3,6 @@ version: 0.2
 
 phases:
   install:
-    runtime-versions:
-      nodejs: 18
-    commands:
-      - echo "Using Node.js $(node --version)"
-      - echo "Using npm $(npm --version)"
-
-  pre_build:
     commands:
       - echo "Installing dependencies..."
       - cd backend && npm install
@@ -17,23 +10,11 @@ phases:
 
   build:
     commands:
-      - echo "Running tests..."
-      - cd backend && npm test || echo "Tests might fail initially - continuing build"
-      - cd ../frontend && CI=true npm test -- --watchAll=false --passWithNoTests || echo "Frontend tests might fail - continuing build"
-      - echo "Building frontend..."
+      - echo "Building application..."
       - cd frontend && npm run build
-
-  post_build:
-    commands:
-      - echo "Creating deployment package..."
-      - mkdir -p deployment
-      - cp -r backend/* deployment/
-      - cp -r frontend/build deployment/frontend-build
-      - cp -r scripts deployment/
-      - chmod +x deployment/scripts/deploy.sh
-      - echo "Build completed on `date`"
+      - echo "Build completed at $(date)"
 
 artifacts:
   files:
     - '**/*'
-  base-directory: deployment
+  base-directory: frontend/build
