@@ -97,23 +97,23 @@ Resources:
 
   # === CODEBUILD PROJECT ===
   BuildProject:
-  Type: AWS::CodeBuild::Project
-  Properties:
-    Name: ecommerce-build
-    Description: Build and test e-commerce application
-    ServiceRole: !GetAtt CodeBuildRole.Arn
-    Source:
-      Type: CODEPIPELINE
-      BuildSpec: buildspec.yml  # ← Just reference the file in your repo
-    Artifacts:
-      Type: CODEPIPELINE
-    Environment:
-      Type: LINUX_CONTAINER
-      ComputeType: BUILD_GENERAL1_MEDIUM
-      Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
-      EnvironmentVariables:
-        - Name: NODE_ENV
-          Value: production
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ecommerce-build
+      Description: Build and test e-commerce application
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 18
+              commands:
+                - echo "Installing dependencies..."
+                - cd backend && npm install
+                - cd ../frontend && npm install
             pre_build:
               commands:
                 - echo "Running tests..."
