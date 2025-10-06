@@ -4,9 +4,6 @@ version: 0.2
 phases:
   install:
     commands:
-      - echo "Installing Node.js..."
-      - curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
-      - yum install -y nodejs
       - echo "Node.js version: $(node --version)"
       - echo "npm version: $(npm --version)"
 
@@ -30,7 +27,7 @@ phases:
       - cp -r backend deployment/
       - cp -r frontend/build deployment/frontend-build
       - cp scripts/deploy.sh deployment/
-      - cp appspec.yml deployment/  # ← Add this line
+      - cp appspec.yml deployment/
       - echo "Deployment package ready"
 
 artifacts:
