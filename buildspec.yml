@@ -1,40 +1,28 @@
-
 version: 0.2
 
 phases:
   install:
     commands:
-      - echo "=== CodeBuild Environment ==="
-      - echo "Current directory: $(pwd)"
-      - echo "Directory contents:"
+      - echo "Starting build process"
+      - pwd
       - ls -la
-      - echo "=== Installing Dependencies ==="
-
   pre_build:
     commands:
-      - echo "Installing backend dependencies..."
+      - echo "Installing backend dependencies"
       - cd backend && npm install
       - cd ..
-
   build:
     commands:
-      - echo "Installing frontend dependencies..."
+      - echo "Building frontend"
       - cd frontend && npm install
-      - echo "Building frontend..."
       - npm run build
       - cd ..
-      - echo "Build completed at $(date)"
-
   post_build:
     commands:
-      - echo "=== Creating Deployment Package ==="
-      - echo "Checking if frontend/build exists..."
-      - ls -la frontend/build/ || echo "frontend/build not found yet"
+      - echo "Creating deployment package"
       - mkdir -p deployment
       - cp -r backend deployment/
       - cp -r frontend/build deployment/frontend-build
-      - cp -r scripts deployment/
-      - echo "Deployment package contents:"
       - ls -la deployment/
 
 artifacts:
