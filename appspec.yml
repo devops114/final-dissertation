@@ -1,0 +1,13 @@
+
+version: 0.0
+os: linux
+files:
+  - source: backend
+    destination: /home/ec2-user/backend
+  - source: frontend-build
+    destination: /var/www/frontend
+hooks:
+  AfterInstall:
+    - location: scripts/deploy.sh
+      timeout: 300
+      runas: root

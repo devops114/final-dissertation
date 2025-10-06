@@ -9,8 +9,7 @@ phases:
       - apt-get install -y curl
       - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
       - apt-get install -y nodejs
-      - echo "Node.js version: $(node --version)"
-      - echo "npm version: $(npm --version)"
+      - echo "Node.js $(node --version) installed"
 
   pre_build:
     commands:
@@ -25,16 +24,9 @@ phases:
       - npm run build
       - cd ..
 
-  post_build:
-    commands:
-      - echo "Creating deployment package..."
-      - mkdir -p deployment
-      - cp -r backend deployment/
-      - cp -r frontend/build deployment/frontend-build
-      - cp scripts/deploy.sh deployment/
-      - echo "Deployment package ready"
-
 artifacts:
   files:
     - '**/*'
-  base-directory: deployment
+  base-directory: frontend/build
+#hi
+

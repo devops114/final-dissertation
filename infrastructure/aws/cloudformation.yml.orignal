@@ -87,19 +87,6 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
 
-  CodeDeployRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codedeploy.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
-
   # === S3 BUCKET FOR ARTIFACTS ===
   ArtifactStoreBucket:
     Type: AWS::S3::Bucket
@@ -128,25 +115,6 @@ Resources:
           - Name: NODE_ENV
             Value: production
 
-  # === CODE DEPLOY ===
-  CodeDeployApplication:
-    Type: AWS::CodeDeploy::Application
-    Properties:
-      ApplicationName: ecommerce-app
-      ComputePlatform: Server
-
-  CodeDeployDeploymentGroup:
-    Type: AWS::CodeDeploy::DeploymentGroup
-    Properties:
-      ApplicationName: !Ref CodeDeployApplication
-      DeploymentGroupName: ecommerce-dg
-      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
-      DeploymentConfigName: CodeDeployDefault.OneAtATime
-      Ec2TagFilters:
-        - Key: Name
-          Value: ecommerce-dissertation
-          Type: KEY_AND_VALUE
-
   # === EC2 INSTANCE ===
   EcommerceInstance:
     Type: AWS::EC2::Instance
@@ -173,13 +141,6 @@ Resources:
           
           # Install PM2 for process management
           npm install -g pm2
-          
-          # Install CodeDeploy agent
-          dnf install -y ruby
-          cd /home/ec2-user
-          wget https://aws-codedeploy-us-east-1.s3.us-east-1.amazonaws.com/latest/install
-          chmod +x ./install
-          ./install auto
           
           # Create application directories
           mkdir -p /home/ec2-user/backend
@@ -226,10 +187,6 @@ Resources:
           # Enable and start nginx
           systemctl enable nginx
           systemctl start nginx
-          
-          # Start CodeDeploy agent
-          systemctl enable codedeploy-agent
-          systemctl start codedeploy-agent
           
           echo "EC2 instance setup complete - ready for deployment"
 
@@ -312,10 +269,11 @@ Resources:
                 Category: Deploy
                 Owner: AWS
                 Version: 1
-                Provider: CodeDeploy
+                Provider: S3
               Configuration:
-                ApplicationName: !Ref CodeDeployApplication
-                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
+                BucketName: !Ref ArtifactStoreBucket
+                Extract: true
+                ObjectKey: !Sub "${BuildProject}/BuildOutput"
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
