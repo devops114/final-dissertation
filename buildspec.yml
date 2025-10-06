@@ -16,9 +16,11 @@ phases:
     commands:
       - echo "Checking project structure..."
       - find . -type d -name "frontend" -o -name "backend" | head -10
+      - echo "Installing backend dependencies..."
+      - cd backend && npm install && cd ..
       - echo "Attempting frontend build..."
       - cd frontend
-      - npm install --verbose
+      - npm install --legacy-peer-deps --verbose
       - npm run build
       - cd ..
       - echo "Creating deployment package..."
@@ -26,7 +28,7 @@ phases:
       - cp -r backend deployment/
       - cp -r frontend/build deployment/frontend-build
       - cp appspec.yml deployment/
-      - cp -r scripts deployment/  # ← This is critical!
+      - cp -r scripts deployment/
 
 artifacts:
   files:
