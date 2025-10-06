@@ -1,5 +1,5 @@
-version: 0.2
 
+version: 0.2
 phases:
   install:
     commands:
@@ -7,25 +7,23 @@ phases:
       - echo "npm version: $(npm --version)"
   pre_build:
     commands:
-      - echo "Installing backend dependencies..."
+      - echo "Installing backend dependencies"
       - cd backend && npm install
       - cd ..
   build:
     commands:
-      - echo "Building frontend..."
+      - echo "Building frontend"
       - cd frontend && npm install
       - npm run build
       - cd ..
   post_build:
     commands:
-      - echo "Creating deployment package..."
+      - echo "Creating deployment package"
       - mkdir -p deployment
       - cp -r backend deployment/
       - cp -r frontend/build deployment/frontend-build
       - cp scripts/deploy.sh deployment/
       - cp appspec.yml deployment/
-      - echo "Deployment package ready"
-
 artifacts:
   files:
     - '**/*'
