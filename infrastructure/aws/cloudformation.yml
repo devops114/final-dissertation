@@ -1,21 +1,11 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'E-commerce Dissertation CI/CD Pipeline - Final'
+Description: 'E-commerce Dissertation CI/CD Pipeline - Amazon Linux 2'
 
 Parameters:
   KeyName:
     Description: Name of an existing EC2 Key Pair
     Type: AWS::EC2::KeyPair::KeyName
-
-  GitHubRepo:
-    Description: GitHub repository name
-    Type: String
-    Default: devops114/final-dissertation
-
-  GitHubBranch:
-    Description: GitHub branch to deploy
-    Type: String
-    Default: main
 
   GitHubToken:
     Description: GitHub OAuth token
@@ -86,7 +76,7 @@ Resources:
   ArtifactStoreBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ecommerce-artifacts-final-${AWS::AccountId}-${AWS::Region}
+      BucketName: !Sub ecommerce-artifacts-al2-${AWS::AccountId}-${AWS::Region}
       VersioningConfiguration:
         Status: Enabled
 
@@ -94,8 +84,8 @@ Resources:
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: ecommerce-build-final
-      Description: Build and test e-commerce application - Final
+      Name: ecommerce-build-al2
+      Description: Build and test e-commerce application - AL2
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Source:
         Type: CODEPIPELINE
@@ -114,36 +104,36 @@ Resources:
   CodeDeployApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
-      ApplicationName: ecommerce-app-final
+      ApplicationName: ecommerce-app-al2
       ComputePlatform: Server
 
   CodeDeployDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
     Properties:
       ApplicationName: !Ref CodeDeployApplication
-      DeploymentGroupName: ecommerce-dg-final
+      DeploymentGroupName: ecommerce-dg-al2
       ServiceRoleArn: !GetAtt CodeDeployRole.Arn
       DeploymentConfigName: CodeDeployDefault.OneAtATime
       Ec2TagFilters:
         - Key: Name
-          Value: ecommerce-dissertation-final
+          Value: ecommerce-dissertation-al2
           Type: KEY_AND_VALUE
 
-  # EC2 Instance
+  # EC2 Instance - USING AMAZON LINUX 2
   EcommerceInstance:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.micro
-      ImageId: ami-0fe630eb857a6ec83
+      ImageId: ami-0c02fb55956c7d316  # Amazon Linux 2 in us-east-1
       KeyName: !Ref KeyName
       SecurityGroupIds:
         - !Ref WebSecurityGroup
       IamInstanceProfile: !Ref EC2InstanceProfile
       Tags:
         - Key: Name
-          Value: ecommerce-dissertation-final
+          Value: ecommerce-dissertation-al2
         - Key: Project
-          Value: dissertation-final
+          Value: dissertation-al2
         - Key: Environment
           Value: production
       UserData:
@@ -151,25 +141,25 @@ Resources:
           #!/bin/bash
           echo "=== Starting EC2 instance setup ==="
           
-          # Update system (continue on error)
-          dnf update -y || echo "Update failed but continuing"
+          # Update system
+          yum update -y
           
-          # Install minimal dependencies
-          dnf install -y ruby wget || echo "Package installation failed but continuing"
+          # Install dependencies
+          yum install -y ruby wget
           
-          # Install CodeDeploy agent (simple approach)
+          # Install CodeDeploy agent
           echo "Installing CodeDeploy agent..."
           cd /home/ec2-user
-          wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install || echo "Download failed but continuing"
-          chmod +x ./install || echo "Chmod failed but continuing"
-          sudo ./install auto || echo "CodeDeploy install failed but continuing"
+          wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install
+          chmod +x ./install
+          ./install auto
           
           # Create directories
           mkdir -p /home/ec2-user/backend /var/www/frontend
           
           # Start CodeDeploy agent
-          systemctl enable codedeploy-agent || echo "Enable failed but continuing"
-          systemctl start codedeploy-agent || echo "Start failed but continuing"
+          systemctl enable codedeploy-agent
+          systemctl start codedeploy-agent
           
           echo "=== EC2 instance setup complete ==="
 
@@ -196,7 +186,7 @@ Resources:
   CICDPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: ecommerce-pipeline-final
+      Name: ecommerce-pipeline-al2
       RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
@@ -258,12 +248,3 @@ Outputs:
   InstanceId:
     Description: EC2 Instance ID
     Value: !Ref EcommerceInstance
-  S3Bucket:
-    Description: S3 Bucket for Artifacts
-    Value: !Ref ArtifactStoreBucket
-  CodeDeployApp:
-    Description: CodeDeploy Application Name
-    Value: !Ref CodeDeployApplication
-  CodeDeployGroup:
-    Description: CodeDeploy Deployment Group
-    Value: !Ref CodeDeployDeploymentGroup
