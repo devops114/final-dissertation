@@ -1,4 +1,3 @@
-
 version: 0.2
 
 phases:
@@ -7,8 +6,10 @@ phases:
       - echo "Checking build environment..."
       - pwd
       - ls -la
-      - echo "Node.js: $(node --version)"
-      - echo "npm: $(npm --version)"
+      - echo "Node.js version:"
+      - node --version
+      - echo "npm version:"
+      - npm --version
 
   build:
     commands:
@@ -21,8 +22,8 @@ phases:
       - cd ..
       - echo "Creating deployment package..."
       - mkdir -p deployment
-      - cp -r backend deployment/ 2>/dev/null || echo "Backend copy failed - creating placeholder"
-      - cp -r frontend/build deployment/frontend-build 2>/dev/null || echo "Frontend build copy failed"
+      - cp -r backend deployment/ || echo "Backend copy failed - creating placeholder"
+      - cp -r frontend/build deployment/frontend-build || echo "Frontend build copy failed"
 
 artifacts:
   files:
