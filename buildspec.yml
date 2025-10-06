@@ -1,32 +1,36 @@
-
 version: 0.2
 
 phases:
   install:
     commands:
-      - echo "Checking build environment..."
-      - pwd
-      - ls -la
+      - echo "Installing specific Node.js version..."
+      - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+      - apt-get install -y nodejs
       - echo "Node.js version:"
       - node --version
       - echo "npm version:"
       - npm --version
+      - echo "Installing frontend dependencies..."
+      - cd frontend && npm install --legacy-peer-deps
+      - cd ..
+
+  pre_build:
+    commands:
+      - echo "Installing backend dependencies..."
+      - cd backend && npm install
+      - cd ..
 
   build:
     commands:
-      - echo "Checking project structure..."
-      - find . -type d -name "frontend" -o -name "backend" | head -10
-      - echo "Installing backend dependencies..."
-      - cd backend && npm install && cd ..
-      - echo "Attempting frontend build..."
+      - echo "Building frontend..."
       - cd frontend
-      - npm install --legacy-peer-deps --verbose
       - npm run build
       - cd ..
       - echo "Creating deployment package..."
-      - mkdir -p deployment
-      - cp -r backend deployment/
-      - cp -r frontend/build deployment/frontend-build
+      - mkdir -p deployment/backend
+      - mkdir -p deployment/frontend-build
+      - cp -r backend/* deployment/backend/
+      - cp -r frontend/build/* deployment/frontend-build/
       - cp appspec.yml deployment/
       - cp -r scripts deployment/
 
