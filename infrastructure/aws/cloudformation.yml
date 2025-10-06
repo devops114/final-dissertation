@@ -158,12 +158,25 @@ Resources:
           # Install dependencies
           dnf install -y nodejs npm nginx ruby wget
           
-          # Install CodeDeploy agent
-          cd /home/ec2-user
+          # Install CodeDeploy agent with retry logic
           echo "Installing CodeDeploy agent..."
-          wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install
-          chmod +x ./install
-          sudo ./install auto
+          cd /home/ec2-user
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            wget https://aws-codedeploy-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/latest/install
+            if [ $? -eq 0 ]; then
+              chmod +x ./install
+              sudo ./install auto
+              if [ $? -eq 0 ]; then
+                echo "✅ CodeDeploy agent installed successfully"
+                break
+              fi
+            fi
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            echo "⚠️ CodeDeploy agent installation failed, retry $RETRY_COUNT/$MAX_RETRIES"
+            sleep 10
+          done
           
           # Create application directories
           mkdir -p /home/ec2-user/backend
@@ -221,6 +234,16 @@ Resources:
           # Ensure CodeDeploy agent is running
           systemctl enable codedeploy-agent
           systemctl start codedeploy-agent
+          
+          # Wait and verify CodeDeploy agent is running
+          sleep 10
+          if systemctl is-active --quiet codedeploy-agent; then
+            echo "✅ CodeDeploy agent is running"
+          else
+            echo "❌ CodeDeploy agent failed to start"
+            # Try to start it again
+            systemctl start codedeploy-agent
+          fi
           
           echo "=== EC2 instance setup complete - ready for deployment ==="
 
